@@ -1160,7 +1160,7 @@ class Dataset:
             else:
                 raise ValueError('Dataset chunking is undefined (yet). You have to pick an explicit chunking option.')
             
-        for (fn, subset), subgrp in sets.groupby(['file', 'subset']):
+        for (fn, subset), subgrp in sets.groupby(['file', 'subset'],sort=False):
             self._file_handles[fn] = fh = h5py.File(fn, swmr=swmr, mode='r' if readonly else 'a')
             if isinstance(chunking, int) and (subgrp.frame == -1).any():
                 # print('Found auxiliary frames, adjusting chunking...')
@@ -1176,6 +1176,7 @@ class Dataset:
                     chk.append(chunking.pop())
                     Nshot -= chk[-1]
                     if Nshot < 0:
+                        print('file',fn,'subset',subset)
                         raise ValueError('Requested chunking is incommensurate with file/subset boundaries!')
                 zchunks = tuple(chk)      
             elif isinstance(chunking, str) and chunking == 'hdf5':
@@ -1196,7 +1197,7 @@ class Dataset:
                         self._diff_stack_label = curr_lbl
                     elif self._diff_stack_label != curr_lbl:
                         warn(f'Non-matching primary diffraction stack labels: '
-                            f'{self._diff_stack_label} vs {grp.attrs["signal"].decode()}')
+                            f'{self._diff_stack_label} vs {curr_lbl}')
                         
                 except KeyError:
                     # no diff stack label stored
@@ -1710,7 +1711,7 @@ class Dataset:
         if isinstance(stream, str):
             stream = StreamParser(stream)
         
-        idcol = ['crystal_id', 'region', 'sample', 'run']
+        idcol = ['crystal_id', 'region', 'sample', 'run'] #'file','Event', 
         idcol_s = [f'hdf5{self.shots_pattern}/{c}' for c in idcol]
         
         beam_center = list(beam_center) if beam_center is not None else []
@@ -1718,8 +1719,8 @@ class Dataset:
         data_col = [''.join(p) for p in 
                         product(('astar_', 'bstar_', 'cstar_'), ('x', 'y', 'z'))] + ['xshift', 'yshift']
                         
-        shots = self.shots[['file', 'Event'] + idcol + beam_center]
-                        
+        shots = self.shots[['file', 'Event'] + idcol + beam_center]#self.shots[idcol + beam_center]
+            
         sol = shots.merge(stream.shots[idcol_s + data_col], 
             left_on=idcol, right_on=idcol_s, how='left')[['file', 'Event'] + data_col + beam_center].dropna()
         

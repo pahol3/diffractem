@@ -176,14 +176,14 @@ def _generate_pattern_info(img: np.ndarray, opts: PreProcOpts,
     # computations on diffraction patterns. To be called from get_pattern_info.
     
     reference = imread(opts.reference) if reference is None else reference
-    pxmask = imread(opts.pxmask) if pxmask is None else pxmask
+    pxmask = imread(opts.pxmask) if pxmask is None else pxmask    
         
     from diffractem.proc_peaks import _ctr_from_pks
     
     # apply flatfield and dead-pixel correction to get more accurate COM
     # CONSIDER DOING THIS OUTSIDE GET PATTERN INFO!
     img = apply_flatfield(img, reference, keep_type=False)
-    img = correct_dead_pixels(img, pxmask, strategy='replace', mask_gaps=False, replace_val=-1)
+    img = correct_dead_pixels(img, pxmask, strategy='replace', mask_gaps=False, replace_val=-1, detector=opts.detector)
     
     if centers is None:
         # thresholded center-of-mass calculation over x-axis sub-range
@@ -206,7 +206,7 @@ def _generate_pattern_info(img: np.ndarray, opts: PreProcOpts,
         # print(centers)
         lorentz = [np.nan] * 4
         com = [np.nan] * 2
-    
+
     # Get peaks using peakfinder8. Note that pf8 parameters are taken straight from the options file,
     # with automatic underscore/hyphen replacement.
     # Note that peak positions are CXI convention, i.e. refer to pixel _center_
@@ -230,8 +230,11 @@ def _generate_pattern_info(img: np.ndarray, opts: PreProcOpts,
             rsq = (pkl[:, 0] - x0) ** 2 + (pkl[:, 1] - y0) ** 2
             pkl = pkl[rsq < opts.friedel_max_radius ** 2, :]
         
-        ctr_refined, cost, _ = _ctr_from_pks(pkl, np.array([x0, y0]), int_weight=False, 
-                    sigma=opts.peak_sigma)
+        if (pkl.shape[0] >= opts.min_peaks): #after the filtering the friedel radius, the number of peaks can be too small
+            ctr_refined, cost, _ = _ctr_from_pks(pkl, np.array([x0, y0]), int_weight=False, 
+                        sigma=opts.peak_sigma)
+        else:
+            ctr_refined, cost = np.array([x0, y0]), np.nan
         
     else:
         ctr_refined, cost = np.array([x0, y0]), np.nan
@@ -258,6 +261,7 @@ def _generate_pattern_info(img: np.ndarray, opts: PreProcOpts,
                     'peak_data': peak_data}
         
     return pattern_info
+
 
 
 def get_pattern_info(img: Union[np.ndarray, da.Array], opts: PreProcOpts, client: Optional[Client] = None, 
@@ -427,18 +431,20 @@ def _get_corr_img(img: np.ndarray,
     img = img.astype(np.float32)
     if opts.correct_saturation:
         img = apply_saturation_correction(img, opts.shutter_time, opts.dead_time, opts.dead_time_gap_factor)
-    img = apply_flatfield(img, reference=reference)
+    if opts.apply_flatfield:
+        img = apply_flatfield(img, reference=reference)
 
     # here, _always_ choose strategy='replace'. Interpolation will only be done on the final step
     # img = correct_dead_pixels(img, pxmask=pxmask, strategy='replace', mask_gaps=opts.mask_gaps)
+    if opts.remove_background:
+        img = remove_background(img, x0, y0, nPeaks, peakXPosRaw, peakYPosRaw, pxmask=None, detector = opts.detector, peak_radius=7, filter_len=11,interp=True)
 
-    img = remove_background(img, x0, y0, nPeaks, peakXPosRaw, peakYPosRaw, pxmask=None)
     return img
     # has to be re-done after background correction
     # TODO THIS IS A TRAIN WRECK. FIX ME
-    img = correct_dead_pixels(img, pxmask, strategy='interpolate' if opts.interpolate_dead else 'replace', mask_gaps=opts.mask_gaps)
+    #img = correct_dead_pixels(img, pxmask, strategy='interpolate' if opts.interpolate_dead else 'replace', mask_gaps=opts.mask_gaps, detector=opts.detector)
     
-    return img
+    #return img
 
 
 def correct_image(img: Union[np.ndarray, da.Array], opts: PreProcOpts, 
@@ -899,6 +905,7 @@ def get_peaks(img: np.ndarray, x0: float, y0: float, max_peaks: int = 500,
     X, Y = np.meshgrid(range(img.shape[1]), range(img.shape[0]))
     R = (((X-x0)**2 + (Y-y0)**2)**.5).astype(np.float32)
      
+    
     mask = np.ones_like(img, dtype=np.int8) if pxmask is None else (pxmask == 0).astype(np.int8)
     mask[R > max_res] = 0
     mask[R < min_res] = 0
@@ -944,7 +951,7 @@ def get_peaks(img: np.ndarray, x0: float, y0: float, max_peaks: int = 500,
 def radial_proj(img: np.ndarray, x0: Optional[float] = None, y0: Optional[float] = None, 
                 scale: float = 1, scale_axis: float = 0,
     my_func: Union[Callable[[np.ndarray], np.ndarray], List[Callable[[np.ndarray], np.ndarray]]] = np.nanmean, 
-    min_size: int = 600, max_size: int = 850, filter_len: int = 1) -> np.ndarray:
+    min_size: int = 600, max_size: int = 1450, filter_len: int = 1) -> np.ndarray:
     """ 
     Applies a function to azimuthal bins of the image around 
     the center (x0, y0) for each integer radius and returns the result 
@@ -1073,7 +1080,7 @@ def strip_img(img: np.ndarray, prof: np.ndarray,
               pxmask: Optional[np.ndarray] = None, truncate: bool = False, 
               offset: Union[float, int] = 0, keep_edge_offset: bool = False, 
               replaceval: Optional[float] = None, interp: bool = True, 
-              dtype: Optional[np.dtype] = None) -> np.ndarray:
+              dtype: Optional[np.dtype] = None, detector: str ='Lambda750k') -> np.ndarray:
     """Subtract a radial profile from a diffraction pattern, assuming radial symmetry of the background.
 
     Args:
@@ -1110,7 +1117,7 @@ def strip_img(img: np.ndarray, prof: np.ndarray,
     ylen,xlen = img.shape
     y,x = np.ogrid[0:ylen,0:xlen]
 
-    if interpolate:
+    if interp:
         iprof = interpolate.interp1d(range(len(prof)), prof, fill_value=0, bounds_error=False)
         radius = ((x-x0)**2 + (y-y0)**2)**0.5
         profile = np.zeros(1+np.floor(np.max(radius)).astype(np.int32))
@@ -1134,7 +1141,7 @@ def strip_img(img: np.ndarray, prof: np.ndarray,
 
     if pxmask is not None:
         img_out = correct_dead_pixels(img_out, pxmask, 'replace', 
-                                      replace_val=replaceval, mask_gaps=False)
+                                      replace_val=replaceval, mask_gaps=False, detector=detector)
 
     if not dtype == img_out.dtype:
         if np.issubdtype(dtype, np.integer):
@@ -1148,7 +1155,7 @@ def strip_img(img: np.ndarray, prof: np.ndarray,
 def remove_background(img: np.ndarray, x0: Optional[float] = None, y0: Optional[float] = None,
     nPeaks: Optional[np.ndarray] = None, peakXPosRaw: Optional[np.ndarray] = None, peakYPosRaw: Optional[np.ndarray] = None, 
     peak_radius=3, filter_len=5, rfunc: Callable[[np.ndarray], np.ndarray] = np.nanmean,
-    pxmask=None, truncate=False,  offset=0) -> np.ndarray:
+    pxmask=None, truncate=False,  offset=0, detector: str ='Lambda750k', interp=True) -> np.ndarray:
     """Combines `radial_proj`, `cut_peaks` and `strip_img` into a background-removal protocol for diffration
     patterns, assuming radial symmetry of the background.
     
@@ -1200,12 +1207,12 @@ def remove_background(img: np.ndarray, x0: Optional[float] = None, y0: Optional[
     
     # ALWAYS mask gaps for the background determination
     # TODO THIS FAILS FOR IMAGES NOT MATCHING THE MAIN DETECTOR GEOMETRY
-    img_nopk = correct_dead_pixels(img_nopk, pxmask, mask_gaps=True, strategy='replace')
+    img_nopk = correct_dead_pixels(img_nopk, pxmask, mask_gaps=True, strategy='replace', detector=detector)
     # return img_nopk
     r0 = radial_proj(img_nopk, x0, y0, my_func=rfunc, filter_len=filter_len)
 
-    img_nobg = strip_img(img, prof=r0, x0=x0, y0=y0, pxmask=pxmask, truncate=truncate, 
-        keep_edge_offset=True, interp=True, dtype=img.dtype)
+    img_nobg = strip_img(img, prof=r0, x0=x0, y0=y0, pxmask=pxmask, truncate=truncate, detector=detector, 
+        keep_edge_offset=True, interp=interp, dtype=img.dtype)
 
     return img_nobg
 
@@ -1335,7 +1342,7 @@ def center_image(imgs: Union[np.ndarray, da.Array], x0: Union[np.ndarray, da.Arr
 
 
 def apply_saturation_correction(img: np.ndarray, exp_time: float, dead_time: float = 1.9e-3, 
-                                gap_factor: float = 2):
+                                gap_factor: float = 2, detector: str = 'Lambda750k'):
     """Apply detector correction function to image. Should ideally be done even before flatfield.
     Uses a 5th order polynomial approximation to the Lambert function, which is appropriate
     for a paralyzable detector, up to the point where its signal starts inverting (which is where
@@ -1352,7 +1359,7 @@ def apply_saturation_correction(img: np.ndarray, exp_time: float, dead_time: flo
     lambert = lambda x: x - x**2 + 3/2*x**3 - 8/3*x**4 + 125/24*x**5
     satcorr = lambda y, sat: -lambert(-sat*y)/sat # saturation parameter: dead time/exposure time
     if gap_factor != 1:
-        dt = dead_time * (1 + (gap_factor-1)*gap_pixels())
+        dt = dead_time * (1 + (gap_factor-1)*gap_pixels(detector=detector))
     else:
         dt = dead_time
         
@@ -1405,9 +1412,9 @@ def apply_flatfield(img: Union[np.ndarray, da.Array], reference: Union[np.ndarra
 
 
 def correct_dead_pixels(img: Union[np.ndarray, da.Array], pxmask: Union[np.ndarray, str], 
-                        strategy: str = 'interpolate', 
+                        strategy: str = 'interpolate', detector: str = 'Lambda750k',
                         interp_range: int = 1, replace_val: Union[float, int] = None, 
-                        mask_gaps: bool = False, edge_mask_x: Union[int, Tuple] = (100, 30), 
+                        mask_gaps: bool = False, edge_mask_x: Union[int, Tuple] = 0, 
                         edge_mask_y: Union[int, Tuple] = 0, invert_mask: bool = False) -> np.ndarray:
     """Corrects a set of images for dead pixels by either replacing values with a 
     constant, or interpolation from a Gaussian-smoothed version of the image. It 
@@ -1451,14 +1458,13 @@ def correct_dead_pixels(img: Union[np.ndarray, da.Array], pxmask: Union[np.ndarr
         raise TypeError('pxmask must be either Numpy array, or TIF file name')
 
     if mask_gaps:
-        pxmask[gap_pixels()] = True
+        pxmask[gap_pixels(detector=detector)] = True
 
     if edge_mask_x:
         if isinstance(edge_mask_x, int):
             rng = (edge_mask_x, edge_mask_x)
         else:
             rng = edge_mask_x
-            print(rng)
         pxmask[:, :rng[0]] = True
         pxmask[:, -rng[1]:] = True
 
@@ -1467,14 +1473,14 @@ def correct_dead_pixels(img: Union[np.ndarray, da.Array], pxmask: Union[np.ndarr
             rng = (edge_mask_y, edge_mask_y)
         else:
             rng = edge_mask_y   
-            print(rng)     
+            #print(rng)     
         pxmask[:rng[0],:] = True
         pxmask[-rng[1]:,:] = True
         
     if strategy == 'interpolate':
 
         if (img.ndim > 2) and strategy == 'interpolate':
-            return np.stack([correct_dead_pixels(theImg, pxmask=pxmask, 
+            return np.stack([correct_dead_pixels(theImg, pxmask=pxmask, detector=detector,
                                                  strategy='interpolate', interp_range=interp_range,
                                                  replace_val=replace_val) for theImg in img])
 

@@ -17,6 +17,8 @@ def gap_pixels(detector='Lambda750k'):
         for k in range(255, 1296, 260):
             gaps[:, k:k+6] = True
         gaps[255:261] = True
+    elif detector == 'OneView2k':
+        gaps = np.zeros((2048,2048), dtype=np.bool)
     else:
         raise ValueError(f'Unknown detector: {detector}')
     return gaps
@@ -35,6 +37,14 @@ def panel_pix(panel_id=1, pxmask=None, img=None,
             col = 5-col        
         if panel_id > 12:
             raise ValueError('panel_id cannot be larger than 12')
+    elif detector == 'OneView2k':
+        shape = (2048,2048)
+        panel_size = 2048
+        panel_gap = 0
+        cutoff = (0, 0)
+        row, col = (0,0)
+        if panel_id > 1:
+            raise ValueError('panel_id cannot be larger than 1')
     else:
         raise ValueError(f'Unknown detector {detector}')
     
