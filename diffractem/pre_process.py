@@ -174,12 +174,12 @@ def from_raw(fn, opt: PreProcOpts):
     else:
         stack_ff = proc2d.apply_flatfield(dsagg.raw_counts, reference)
 
-    stack = proc2d.correct_dead_pixels(stack_ff, pxmask, strategy='replace', replace_val=-1, mask_gaps=True)
+    stack = proc2d.correct_dead_pixels(stack_ff, pxmask, strategy='replace', replace_val=-1, mask_gaps=True, detector=opt.detector)
 
     # Stack in central region along x (note that the gaps are not masked this time)
     xrng = slice((opt.xsize - opt.com_xrng) // 2, (opt.xsize + opt.com_xrng) // 2)
     stack_ct = proc2d.correct_dead_pixels(stack_ff[:, :, xrng], pxmask[:, xrng],
-                                          strategy='replace', replace_val=-1, mask_gaps=False)
+                                          strategy='replace', replace_val=-1, mask_gaps=False, detector=opt.detector)
 
     # Define COM threshold as fraction of highest pixel (after discarding some too high ones)
     thr = stack_ct.max(axis=1).topk(10, axis=1)[:, 9].reshape((-1, 1, 1)) * opt.com_threshold
@@ -358,7 +358,7 @@ def subtract_bg(fn, opt: PreProcOpts):
 
     original = ds.centered
     bg_corrected = da.map_blocks(proc2d.remove_background, original, original.shape[2] / 2, original.shape[1] / 2,
-                                 nPeaks, peakX, peakY, peak_radius=opt.peak_radius, filter_len=opt.filter_len,
+                                 nPeaks, peakX, peakY, peak_radius=opt.peak_radius, filter_len=opt.filter_len,detector = opt.detector,
                                  dtype=np.float32 if opt.float else np.int32, chunks=original.chunks)
 
     ds.add_stack('centered', bg_corrected, overwrite=True)
@@ -443,7 +443,7 @@ def broadcast(fn, opt: PreProcOpts):
                 stack_rechunked, opt.shutter_time, opt.dead_time), reference)
         else:
             stack_ff = proc2d.apply_flatfield(stack_rechunked, reference)
-        stack = proc2d.correct_dead_pixels(stack_ff, pxmask, strategy='replace', replace_val=-1, mask_gaps=True)
+        stack = proc2d.correct_dead_pixels(stack_ff, pxmask, strategy='replace', replace_val=-1, mask_gaps=True, detector=opt.detector)
         centered = proc2d.center_image(stack, ctr[:, 0], ctr[:, 1], opt.xsize, opt.ysize, -1, parallel=True)
 
         # add the new stacks to the aggregated dataset

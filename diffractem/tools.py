@@ -81,7 +81,7 @@ def make_reference(reference_filename, output_base_fn=None, ref_smooth_range=Non
 
     if per_panel:
         from diffractem import panel_pix
-        for pid in range(1,13,1):
+        for pid in range(1,13,1):  #The number of panel must be detector dependant
             sel = panel_pix(pid, include_gap=False)
             vom[sel] = vom[sel] / np.median(vom[sel])
             mimg[sel] = mimg[sel] / np.median(mimg[sel])
@@ -361,7 +361,10 @@ def call_indexamajig_slurm(input, geometry, name='idx', cell: Optional[str] = No
         write_tar_file=True
     
     script_name = f'im_run_{name}.sh'
+<<<<<<< HEAD
     tar_file = f'{name}.tar.gz' if write_tar_file else None
+=======
+>>>>>>> modifications to insure functions with oneview camera
 
     cf_call = []
     os.makedirs(folder, exist_ok=True)
@@ -369,13 +372,15 @@ def call_indexamajig_slurm(input, geometry, name='idx', cell: Optional[str] = No
 
     from subprocess import run
     local_bin_dir = '' if local_bin_dir is None else local_bin_dir
-    run(f'{os.path.join(local_bin_dir,"list_events")} -i {input} -g virtual.geom -o {input}-shots.lst'.split(' '))
-    shots = pd.read_csv(f'{input}-shots.lst', delim_whitespace=True, names=['file', 'Event'])
-    os.remove(f'{input}-shots.lst')
+    run(f'{os.path.join(local_bin_dir,"list_events")} -i {input} -g {geometry} -o {str(input).split(".")[0]}-shots.lst'.split(' '))
+    shots = pd.read_csv(f'{str(input).split(".")[0]}-shots.lst', delim_whitespace=True, names=['file', 'Event'])
+    os.remove(f'{str(input).split(".")[0]}-shots.lst')
 
     if threads > 1:
         # add thread parameters here if needed (e.g. for other indexers)
         im_params['pinkIndexer-thread-count'] = threads
+    
+
 
     for ii, grp in shots.groupby(shots.index // shots_per_run):
         jobname = f'{name}_{ii:03d}'
@@ -385,7 +390,8 @@ def call_indexamajig_slurm(input, geometry, name='idx', cell: Optional[str] = No
                                 cell=cell, im_params=im_params, 
                                 procs=procs, exc=exc,
                                 no_refls_in_stream=False, serial_start=grp.index[0]+1,
-                                copy_fields=copy_fields, **kwargs)
+                                copy_fields=copy_fields,
+                                **kwargs)
         
         slurmstr = make_command('sbatch', partition=partition, job_name=jobname, 
                                     time=time, nodes=1, ntasks=procs*threads,
@@ -393,12 +399,14 @@ def call_indexamajig_slurm(input, geometry, name='idx', cell: Optional[str] = No
                                     wrap=f"'{callstr}'")
         
         cf_call.append(slurmstr)
-        
-    with open(script_name, 'w') as fh:
-        fh.write('\n'.join(cf_call))
-    os.chmod(script_name, os.stat(script_name).st_mode | 0o111)
 
     if tar_file is not None:
+
+        with open(script_name, 'w') as fh:
+            fh.write('\n'.join(cf_call))
+        os.chmod(script_name, os.stat(script_name).st_mode | 0o111)
+        print(f'Run indexing by calling ./{script_name}')
+
         import tarfile
         with tarfile.open(tar_file, 'w:gz' if tar_file.endswith('.gz') else 'w') as tar:
             tar.add(folder)
@@ -410,9 +418,9 @@ def call_indexamajig_slurm(input, geometry, name='idx', cell: Optional[str] = No
         print(f'Wrote self-contained tar file {tar_file}. ' 
               f'Upload to your favorite cluster and extract with: tar -xf {tar_file}')
         
-    print(f'Run indexing by calling ./{script_name}')
+        return tar_file, cf_call
     
-    return tar_file, script_name
+    return cf_call
     
     
 def call_indexamajig(input, geometry, output='im_out.stream', cell: Optional[str] = None,
@@ -714,7 +722,7 @@ def viewing_widget(ds_disp, shot=0, Imax=30, log=False):
     fh.canvas.header_visible=False    
     ih = ax.imshow(img_stack[shot,...].compute(scheduler='threading'), vmin=0, vmax=Imax, cmap='gray_r')
     if have_peaks:
-        sc = ax.scatter([], [], c='g', alpha=0.1)
+        sc = ax.scatter([], [], c='r', alpha=0.9,s=2)
     if have_center:
         cx, cy = (plt.axvline(ds_disp.shots.loc[0,'center_x'], c='b', alpha=0.2), 
                   plt.axhline(ds_disp.shots.loc[0,'center_y'], c='b', alpha=0.2))

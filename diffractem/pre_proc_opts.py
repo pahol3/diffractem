@@ -18,7 +18,12 @@ class PreProcOpts:
         self.reference: str = 'Ref12_reference.tif'  #: Name of reference image for flat-field correction in TIF format
         self.pxmask: str = 'Ref12_pxmask.tif'        #: Name of pixelmask TIF image
         self.correct_saturation: bool = True          #: Correct for detector saturation using paralyzable model
+<<<<<<< HEAD
         self.remove_background: bool = True       #: Determine and subtract background during image correction
+=======
+        self.apply_flatfield: bool = True             #: Apply flat-field correction
+        self.remove_background: bool = True           #: Remove diffuse background
+>>>>>>> modifications to insure functions with oneview camera
         self.dead_time: float = 1.9e-3                 #: Dead time (in ms) for paralyzable detector model
         self.dead_time_gap_factor: float = 2           #: Factor for dead time in gap-pixels 
         self.shutter_time: float = 2                   #: Shutter time (in ms) for paralyzable detector model
@@ -90,6 +95,7 @@ class PreProcOpts:
         self.cum_first_frame = 0
         self.rerun_peak_finder = False
         self.peak_radius = 4
+        self.detector: str = 'Lambda750k'   #Detector name
 
         if fn is not None:
             self.load(fn)

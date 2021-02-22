@@ -27,15 +27,31 @@ def _ctr_from_pks(pkl: np.ndarray, p0: np.ndarray,
     Returns:
         [tuple] -- [refined position, inverse cost function, label]
     """
+    np.seterr('raise')
+
     if int_weight:
         corr = lambda p: np.sum(np.matmul(pkl[:, 2:3], pkl[:, 2:3].T)
                                 * np.exp(-((pkl[:, 0:1] + pkl[:, 0:1].T - 2 * p[0]) ** 2
                                            + (pkl[:, 1:2] + pkl[:, 1:2].T - 2 * p[1]) ** 2) / (2 * sigma ** 2))) \
                          / np.sum(np.matmul(pkl[:, 2:3], pkl[:, 2:3].T))
     else:
+<<<<<<< HEAD
         corr = lambda p: np.sum(np.exp(-((pkl[:, 0:1] + pkl[:, 0:1].T - 2 * p[0]) ** 2
                                          + (pkl[:, 1:2] + pkl[:, 1:2].T - 2 * p[1]) ** 2) / (2 * sigma ** 2))) \
                          / (2*pkl.shape[0])
+=======
+        intermediate = lambda p: np.minimum(( (pkl[:, 0:1] + pkl[:, 0:1].T - 2 * p[0]) ** 2
+                                            + (pkl[:, 1:2] + pkl[:, 1:2].T - 2 * p[1]) ** 2) / (2 * sigma ** 2), 
+                                            600 * np.ones((pkl.shape[0],pkl.shape[0])))
+        
+        
+        corr = lambda p: np.sum( np.exp( -( intermediate(p) ) ) ) / pkl.shape[0]
+
+        '''corr = lambda p: np.sum( np.exp( -((pkl[:, 0:1] + pkl[:, 0:1].T - 2 * p[0]) ** 2
+                                            + (pkl[:, 1:2] + pkl[:, 1:2].T - 2 * p[1]) ** 2) / (2 * sigma ** 2) ) ) \
+                         / pkl.shape[0]'''
+
+>>>>>>> modifications to insure functions with oneview camera
 
     fun = lambda p: 1 / max(corr(p), 1e-10)  # prevent infs
     if np.isnan(fun(p0)):
@@ -217,7 +233,7 @@ def get_pk_data(n_pk: np.ndarray, pk_x: np.ndarray, pk_y: np.ndarray,
             row[N:] = np.nan
        
     if opts is not None:
-        pxs = opts.pixel_size if pxs is None else pxs
+        pxs = float(opts.pixel_size) if pxs is None else pxs
         clen = opts.cam_length if clen is None else clen
         wl = opts.wavelength if wl is None else wl
         el_rat = opts.ellipse_ratio if el_rat is None else el_rat
