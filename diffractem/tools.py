@@ -361,10 +361,7 @@ def call_indexamajig_slurm(input, geometry, name='idx', cell: Optional[str] = No
         write_tar_file=True
     
     script_name = f'im_run_{name}.sh'
-<<<<<<< HEAD
     tar_file = f'{name}.tar.gz' if write_tar_file else None
-=======
->>>>>>> modifications to insure functions with oneview camera
 
     cf_call = []
     os.makedirs(folder, exist_ok=True)

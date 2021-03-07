@@ -30,16 +30,18 @@ def _ctr_from_pks(pkl: np.ndarray, p0: np.ndarray,
     np.seterr('raise')
 
     if int_weight:
+        intermediate = lambda p: np.minimum(( (pkl[:, 0:1] + pkl[:, 0:1].T - 2 * p[0]) ** 2
+                                            + (pkl[:, 1:2] + pkl[:, 1:2].T - 2 * p[1]) ** 2) / (2 * sigma ** 2), 
+                                            600 * np.ones((pkl.shape[0],pkl.shape[0])))
+
         corr = lambda p: np.sum(np.matmul(pkl[:, 2:3], pkl[:, 2:3].T)
+                                * np.exp(-( intermediate(p) ) ) ) / np.sum(np.matmul(pkl[:, 2:3], pkl[:, 2:3].T))
+
+        '''corr = lambda p: np.sum(np.matmul(pkl[:, 2:3], pkl[:, 2:3].T)
                                 * np.exp(-((pkl[:, 0:1] + pkl[:, 0:1].T - 2 * p[0]) ** 2
-                                           + (pkl[:, 1:2] + pkl[:, 1:2].T - 2 * p[1]) ** 2) / (2 * sigma ** 2))) \
-                         / np.sum(np.matmul(pkl[:, 2:3], pkl[:, 2:3].T))
-    else:
-<<<<<<< HEAD
-        corr = lambda p: np.sum(np.exp(-((pkl[:, 0:1] + pkl[:, 0:1].T - 2 * p[0]) ** 2
                                          + (pkl[:, 1:2] + pkl[:, 1:2].T - 2 * p[1]) ** 2) / (2 * sigma ** 2))) \
-                         / (2*pkl.shape[0])
-=======
+                         / np.sum(np.matmul(pkl[:, 2:3], pkl[:, 2:3].T))'''
+    else:
         intermediate = lambda p: np.minimum(( (pkl[:, 0:1] + pkl[:, 0:1].T - 2 * p[0]) ** 2
                                             + (pkl[:, 1:2] + pkl[:, 1:2].T - 2 * p[1]) ** 2) / (2 * sigma ** 2), 
                                             600 * np.ones((pkl.shape[0],pkl.shape[0])))
@@ -51,7 +53,6 @@ def _ctr_from_pks(pkl: np.ndarray, p0: np.ndarray,
                                             + (pkl[:, 1:2] + pkl[:, 1:2].T - 2 * p[1]) ** 2) / (2 * sigma ** 2) ) ) \
                          / pkl.shape[0]'''
 
->>>>>>> modifications to insure functions with oneview camera
 
     fun = lambda p: 1 / max(corr(p), 1e-10)  # prevent infs
     if np.isnan(fun(p0)):
